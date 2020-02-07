@@ -35,7 +35,7 @@ knn = KNeighborsClassifier(n_neighbors=13)
 print('\nСредняя точность модели KNN с k=13:',
       cross_val_score(knn, X, y, cv=10, scoring='accuracy').mean())
 
-# Перед созданием модели LogisticRegression обрабатываем сходные данные,
+# Перед созданием модели LogisticRegression обрабатываем исходные данные,
 # чтобы привести их к диапазону от 0 до 1:
 scaler = preprocessing.MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
