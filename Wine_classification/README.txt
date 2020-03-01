@@ -1,6 +1,6 @@
 Примеры моделей классификации на основе 'Wine recognition dataset'.
 
-Классификация выполняется с применением моделей LogisticRegression, KNN и SVC из библиотеки scikit-learn.
+Классификация выполняется с применением моделей LogisticRegression, KNN, SVC и GradientBoosting из библиотеки scikit-learn.
 Для анализа ошибок в классификации на примере модели с ограниченным набором параметров
 используется 'confusion_matrix', производится расчет показателей 'recall_score' и 'ROC AUC'.
 
