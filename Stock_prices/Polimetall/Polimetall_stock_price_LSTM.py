@@ -39,38 +39,36 @@ train_data = data_scaled[:-90]  # кроме последних 90 значен�
 test_data = data_scaled[-90:]  # последние 90 значений
 
 # Создаем генераторы временных рядов
-# (при прогнозировании учитываем последние 5 значений ряда):
+# (при прогнозировании учитываем последние 3 значения ряда):
 train_data_gen = TimeseriesGenerator(train_data, train_data,
-	length=5, sampling_rate=1, stride=1,
-    batch_size=5)
+	length=3, sampling_rate=1, stride=1,
+    batch_size=50)
 
 test_data_gen = TimeseriesGenerator(test_data, test_data,
-	length=5, sampling_rate=1, stride=1,
-	batch_size=1)
+	length=3, sampling_rate=1, stride=1,
+	batch_size=10)
 
-# Создаем модель из двух слоев LSTM и Dropout:
-model = Sequential([LSTM(5, activation='relu', return_sequences=True, input_shape=(5, 1)),
-                    Dropout(0.1),
-                    LSTM(5, activation='relu', return_sequences=False),
-                    Dropout(0.1),
+# Создаем модель:
+model = Sequential([LSTM(4, recurrent_dropout=0.15, return_sequences=True, input_shape=(3, 1)),
+                    LSTM(4, recurrent_dropout=0.15, return_sequences=False),
                     Dense(1)])
 
-model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+model.compile(optimizer='adam', loss='mse')
 model.summary()
 
-# Обучаем модель (в процессе обучения отслеживаем показатель MAE,
-# останавливаем обучение при его ухудшении для валидационных данных
+# Обучаем модель (в процессе обучения отслеживаем показатель MSE,
+# останавливаем обучение, если нет улучшений для валидационных данных,
 # и восстанавливаем веса модели с наилучшим показателем):
-early_stop = EarlyStopping(monitor='val_mae', patience=3, restore_best_weights=True)
+early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
 history = model.fit(train_data_gen,
-                    epochs=20,
+                    epochs=150,
                     verbose=2,
                     validation_data=test_data_gen,
                     callbacks=[early_stop])
 
 
-def plot_history(histories, key='mae'):
+def plot_history(histories, key='loss'):
     """Функция создает график с динамикой точности модели
     на учебных и на тестовых данных."""
 
@@ -92,22 +90,17 @@ def plot_history(histories, key='mae'):
 plot_history([('Model', history)])
 
 # Оцениваем точность модели на тестовых данных:
-test_loss, test_mae = model.evaluate_generator(test_data_gen)
-print(f'\nTest loss (MSE): {test_loss}\nTest MAE: {test_mae}')
+test_loss = model.evaluate_generator(test_data_gen)
+print(f'\nTest loss (MSE): {test_loss}')
 
 # Делаем прогноз для тестовых данных:
 prediction = model.predict_generator(test_data_gen)
 prediction = scaler.inverse_transform(prediction)
 
 # График с фактическими и прогнозными котировками для тестовых данных:
-plt.plot(data[-85:], label='Фактические котировки')
-plt.plot(data[-85:].index, prediction.ravel(), label='Прогноз')
+plt.plot(data[-87:], label='Фактические котировки')
+plt.plot(data[-87:].index, prediction.ravel(), label='Прогноз')
 plt.title('Котировки акций Полиметалла')
 plt.ylabel('Цена акции, МосБиржа, руб.')
 plt.legend()
 plt.show()
-
-# Если погрешность прогноза составляет менее 3%, сохраняем модель и график:
-if test_mae < 0.03:
-    model.save('Polimetall_model.h5')
-    plt.savefig('Polimetall_plot.png')
