@@ -5,7 +5,7 @@
 - Birch
 - AgglomerativeClustering
 
-Производится анализ корреляции между числовыми параметрами, анализ распределения числовых и категорийных параметров, определение оптимального набора параметров для моделей (Principal Component Analysis), подбор оптимального количества кластеров, визуализация и интерпретация полученных результатов.
+Производится предварительная фильтрация ошибок и опечаток в исходных данных, анализ корреляции между числовыми параметрами, анализ распределения числовых и категорийных параметров, определение оптимального набора параметров для моделей (Principal Component Analysis), подбор оптимального количества кластеров, визуализация и интерпретация полученных результатов.
 
 Источник данных: https://archive.ics.uci.edu/ml/datasets/Dresses_Attribute_Sales
 
@@ -17,20 +17,20 @@ I. Таблица с характеристиками товаров:
    Количество параметров: 14
 
    Параметры и их значения:
-   - Dress_ID: код товара
-   - Style: стиль (Bohemia, brief, casual, cute, fashion, flare, novelty, OL, party, sexy, vintage, work)
-   - Price: ценовой диапазон (Low, Average, Medium, High, Very-High)
-   - Rating: рейтинг (1-5)
-   - Size: размер (S, M, L, XL, Free)
-   - Season: сезон (Autumn, winter, Spring, Summer)
-   - NeckLine: форма выреза (O-neck, backless, board-neck, Bowneck, halter, mandarin-collor, open, peterpan-collor, ruffled, scoop, slash-neck, square-collar, sweetheart, turndowncollar, V-neck)
-   - SleeveLength: длина рукава (full, half, halfsleeves, butterfly, sleveless, short, threequarter, turndown, null)
-   - Waistline: талия (dropped, empire, natural, princess, null)
-   - Material: материал (wool, cotton, mix, etc.)
-   - FabricType: ткань (shafoon, dobby, popline, satin, knitted, jersey, flannel, corduroy, etc.)
-   - Decoration: отделка (applique, beading, bow, button, cascading, crystal, draped, embroridary, feathers, flowers, etc.)
-   - Pattern Type: рисунок (solid, animal, dot, leapard, etc.)
-   - Recommendation: рекомендации (0, 1)
+   - Dress_ID: код товара (числовые значения)
+   - Style: стиль (текстовые значения)
+   - Price: ценовой диапазон (текстовые значения)
+   - Rating: рейтинг (числовые значения)
+   - Size: размер (текстовые значения)
+   - Season: сезон (текстовые значения)
+   - NeckLine: форма выреза (текстовые значения)
+   - SleeveLength: длина рукава (текстовые значения)
+   - Waistline: талия (текстовые значения)
+   - Material: материал (текстовые значения)
+   - FabricType: ткань (текстовые значения)
+   - Decoration: отделка (текстовые значения)
+   - Pattern Type: рисунок (текстовые значения)
+   - Recommendation: рекомендации (числовые значения: 0 или 1)
 
 II. Таблица с данными о продажах:
 
@@ -39,4 +39,4 @@ II. Таблица с данными о продажах:
 
    Параметры и их значения:
    - Dress_ID: код товара
-   - Остальные столбцы представляют собой даты в формате дд.мм.гггг и дд/мм/гггг
+   - Заголовки остальных столбцов представляют собой даты в формате дд.мм.гггг и дд/мм/гггг, столбцы содержат данные о продажах (числовые значения)
