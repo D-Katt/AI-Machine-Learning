@@ -1,101 +1,118 @@
-# Пример загрузки данных из массивов NumPy в tf.data.Dataset.
-# Используется датасет 'load_wine' из библиотеки 'sklearn'.
-# Создается модель с регуляризацией весов.
-# Для автоматической остановки процесса обучения
-# используется инструмент callbacks.EarlyStopping.
+"""Используется 'Wine recognition dataset' из библиотеки 'sklearn'.
+Создается модель с полносвязными слоями с регуляризацией весов
+и входным слоем для нормализации исходных числовых данных.
+Для автоматической остановки процесса обучения
+используется инструмент callbacks.EarlyStopping.
+"""
 
 import tensorflow as tf
-
 from sklearn.datasets import load_wine
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-
 import matplotlib.pyplot as plt
 
+# Настройки отображения графиков:
+plt.style.use('fivethirtyeight')
+plt.rcParams['figure.figsize'] = 9, 6
+plt.rcParams.update({'font.size': 11})
+
+# Исходные данные:
 data = load_wine()
+X = data.data  # (178, 13)
+y = data.target  # (178,)
 
-X = data.data
-y = data.target
+# -------------------------- Создание модели -------------------------------
 
-# Приводим значения в массиве X к диапазону от 0 до 1:
-min_max_scaler = MinMaxScaler()
-X = min_max_scaler.fit_transform(X)
+# Слой для нормализации данных, который станет составной частью модели:
+normalizer = tf.keras.layers.experimental.preprocessing.Normalization()
+normalizer.adapt(X)  # Здесь определяется среднее значение и стандартное отклонение
 
-# Разбиваем данные на 3 группы - для обучения, валидации и тестирования:
-train_examples, test_examples, train_labels, test_labels = train_test_split(X, y,
-                                                                            test_size=0.4)
-test_examples, val_examples, test_labels, val_labels = train_test_split(test_examples,
-                                                                            test_labels,
-                                                                            test_size=0.5)
+# Модель с входным слоем, который нормализует данные при их передаче в модель
+inputs = tf.keras.Input(shape=[13])
+x = normalizer(inputs)
+x = tf.keras.layers.Dense(32,
+                          kernel_regularizer=tf.keras.regularizers.l2(0.001),
+                          activation='relu')(x)
+x = tf.keras.layers.Dense(16,
+                          kernel_regularizer=tf.keras.regularizers.l2(0.001),
+                          activation='relu')(x)
+outputs = tf.keras.layers.Dense(3, activation='softmax')(x)
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
-# Передаем учебные и тестовые данные кортежами для формирования датасетов:
-train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_labels))
-test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
-val_dataset = tf.data.Dataset.from_tensor_slices((val_examples, val_labels))
-
-# Перемешиваем значения и разбиваем датасеты на пакеты по 20 элементов:
-batch_size = 20
-shuffle_buffer_size = 50
-
-train_dataset = train_dataset.shuffle(shuffle_buffer_size).batch(batch_size)
-test_dataset = test_dataset.shuffle(shuffle_buffer_size).batch(batch_size)
-val_dataset = val_dataset.shuffle(shuffle_buffer_size).batch(batch_size)
-
-# Создаем модель:
-model = tf.keras.Sequential([
-                tf.keras.layers.Dense(13,
-                                      kernel_regularizer=tf.keras.regularizers.l2(0.001),
-                                      activation='relu',
-                                      input_shape=[13]),
-                tf.keras.layers.Dense(39,
-                                      kernel_regularizer=tf.keras.regularizers.l2(0.001),
-                                      activation='relu'),
-                tf.keras.layers.Dense(3, activation='softmax')
-                ])
-
+# Параметры:
 model.compile(optimizer=tf.keras.optimizers.RMSprop(),
               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
               metrics=[tf.keras.metrics.SparseCategoricalAccuracy()])
 
-# Будем отслеживать точность модели в процессе обучения,
-# чтобы остановить процесс, когда точность начнет снижаться:
-early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                              patience=5)
+model.summary()  # Характеристики модели
 
-model.summary()  # Выводим характеристики модели
+# ----------------------------- Формирование датасетов ----------------------------------
+
+# Преобразуем исходные необработанные данные в датасет:
+dataset = tf.data.Dataset.from_tensor_slices((X, y))
+
+# Перемешиваем датасет и разбиваем на пакеты
+n_samples = len(X)
+batch_size = 8  # С учетом маленького объема исходных данных
+shuffle_buffer_size = n_samples
+dataset = dataset.shuffle(shuffle_buffer_size).batch(batch_size)
+
+# Разбиваем датасет на 3 выборки:
+n_batches = n_samples // batch_size
+
+train_size = round(0.6 * n_batches)
+val_size = int(0.2 * n_batches)
+test_size = int(0.2 * n_batches)
+
+train_set = dataset.take(train_size)
+val_set = dataset.skip(train_size).take(val_size)
+test_set = dataset.skip(train_size).skip(val_size)
+
+# ------------------------- Обучение модели и оценка точности ---------------------------
+
+# Для остановки обучения модели при отсутствии улучшений в течение 5 эпох:
+early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                              patience=5,
+                                              restore_best_weights=True)
 
 # Обучаем модель, используя для валидации отдельную группу данных.
-# Обучение будет автоматически прервано при снижении точности.
-history = model.fit(train_dataset,
-                    epochs=30,
-                    validation_data=val_dataset,
+# Обучение будет автоматически прервано при отсутствии прогресса.
+history = model.fit(train_set,
+                    epochs=100,
+                    validation_data=val_set,
                     verbose=2,
                     callbacks=[early_stop])
 
+# Основные показатели в процессе обучения модели
+acc = history.history['sparse_categorical_accuracy']
+val_acc = history.history['val_sparse_categorical_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
 
-def plot_history(histories, key='sparse_categorical_accuracy'):
-    """Функция создает график с динамикой точности модели
-    на учебных и на тестовых данных."""
-    plt.figure(figsize=(16, 10))
+x_axis = range(1, len(acc) + 1)
 
-    for name, history in histories:
-        val = plt.plot(history.epoch, history.history['val_'+key],
-                   '--', label=name.title()+' Validation')
-        plt.plot(history.epoch, history.history[key], color=val[0].get_color(),
-             label=name.title()+' Training')
+plt.plot(x_axis, loss, 'bo', label='Training')
+plt.plot(x_axis, val_loss, 'ro', label='Validation')
+plt.title('Training and validation loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.tight_layout()
+plt.savefig('nn_loss.png')
+plt.show()
 
-    plt.xlabel('Epochs')
-    plt.ylabel(key.replace('_', ' ').title())
-    plt.legend()
-
-    plt.xlim([0, max(history.epoch)])
-    plt.show()
-
-
-# Выводим график точности в процессе обучения модели:
-plot_history([('Model', history)])
+plt.plot(x_axis, acc, 'bo', label='Training')
+plt.plot(x_axis, val_acc, 'ro', label='Validation')
+plt.title('Training and validation accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.tight_layout()
+plt.savefig('nn_acc.png')
+plt.show()
 
 # Проверяем точность модели на группе тестовых данных,
 # которые не использовались в процессе обучения:
-test_loss, test_acc = model.evaluate(test_dataset, verbose=2)
-print('\nТочность модели на тестовых данных:', test_acc)
+test_loss, test_acc = model.evaluate(test_set)
+print(f'\nTest accuracy: {test_acc}\nTest loss: {test_loss}')
+
+# Сохранение модели с весами и параметрами оптимизатора:
+model.save('wine_classifier.h5')
