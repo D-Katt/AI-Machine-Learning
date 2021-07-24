@@ -1,130 +1,193 @@
+"""Model predicts next day's stock price for Polymetall metal company
+based on the close price and trade volume for previous periods. Bivariate LSTM model.
+Data source: https://www.finam.ru/profile/moex-akcii/polymetal-international-plc/export/
+"""
+
 import pandas as pd
-import numpy as np
-
+import datetime
 from sklearn.preprocessing import MinMaxScaler
-
-from tensorflow.keras.preprocessing.sequence import TimeseriesGenerator
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, LSTM, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
 
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 
-# Считываем данные о котировках акций Полиметалла:
-data = pd.read_csv('POLY_stock_price.csv')
+# Plots display settings
+plt.rcParams['figure.figsize'] = 12, 8
+plt.rcParams.update({'font.size': 14})
 
-# Преобразуем столбец с датой в формат datetime:
-data['<DATE>'] = pd.to_datetime(data['<DATE>'].astype(str), format='%Y%m%d')
+FILE_PATH = 'POLY_stock_price.csv'
 
-# Преобразуем столбец с датой в индекс:
-data.set_index('<DATE>', inplace=True)
+# Tensorflow settings
+EPOCHS = 1000
+PATIENCE = 5
+BATCH_SIZE = 64
+LOOKBACK = 7
+SAMPLING_RATE = 1
+STRIDE = 1
 
-# Формируем два массива, содержащие параметры и прогнозируемые значения:
-data_X = data[['<OPEN>', '<VOL>']]
-data_y = data['<OPEN>']
-
-# Выводим график с котировками акций и объемом торгов:
-fig, ax = plt.subplots()
-ax_double_x = ax.twinx()
-
-ax.plot_date(data_y.index, data_y.values,
-             linestyle='solid', marker=None,
-             color='red', label='Цена')
-ax.set_ylabel('Цена акции, МосБиржа, руб.')
-
-ax_double_x.plot_date(data_X.index, data_X['<VOL>'].values,
-                      linestyle='solid', color='blue',
-                      marker=None, label='Объем')
-ax_double_x.set_ylabel('Объем торгов')
-
-plt.gcf().autofmt_xdate()
-ax.legend(loc='upper left')
-ax_double_x.legend(loc='upper right')
-ax.set_title('Котировки акций Полиметалла')
-fig.tight_layout()
-plt.show()
-
-# Приводим данные к диапазону от 0 до 1:
-scaler_X = MinMaxScaler()
-scaler_y = MinMaxScaler()
-
-data_X_scaled = scaler_X.fit_transform(np.array(data_X).reshape(-1, 2))
-data_y_scaled = scaler_y.fit_transform(np.array(data_y).reshape(-1, 1))
-
-# Делим данные на учебные и тестовые:
-train_X = data_X_scaled[:-90]
-train_y = data_y_scaled[:-90]
-
-test_X = data_X_scaled[-90:]
-test_y = data_y_scaled[-90:]
-
-# Создаем генераторы временных рядов (учитываем 3 последних значения):
-train_data_gen = TimeseriesGenerator(train_X, train_y,
-	length=3, sampling_rate=1, stride=1,
-    batch_size=50)
-
-test_data_gen = TimeseriesGenerator(test_X, test_y,
-	length=3, sampling_rate=1, stride=1,
-	batch_size=10)
-
-# Создаем модель:
-model = Sequential([LSTM(4, recurrent_dropout=0.15, return_sequences=True, input_shape=(3, 2)),
-                    LSTM(4, recurrent_dropout=0.15, return_sequences=False),
-                    Dense(1)])
-
-model.compile(optimizer='adam', loss='mse')
-model.summary()
-
-# Обучаем модель (в процессе обучения отслеживаем показатель MSE,
-# останавливаем обучение, если нет улучшений для валидационных данных,
-# и восстанавливаем веса модели с наилучшим показателем):
-early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-
-history = model.fit(train_data_gen,
-                    epochs=150,
-                    verbose=2,
-                    validation_data=test_data_gen,
-                    callbacks=[early_stop])
+# --------------------------- Functions -----------------------------
 
 
-def plot_history(histories, key='loss'):
-    """Функция создает график с динамикой точности модели
-    на учебных и на тестовых данных."""
+def get_data(path: str) -> pd.DataFrame:
+    """Function loads stock prices from a local file.
+    :param path: Path to a csv file
+    :return: DataFrame with close price and volume columns and datetime index
+    """
+    parser = lambda x: datetime.datetime.strptime(x, '%Y%m%d')
+    df = pd.read_csv(path, usecols=['<CLOSE>', '<VOL>', '<DATE>'],
+                     index_col='<DATE>', date_parser=parser)
+    display_data(df)
+    return df
 
-    for name, history in histories:
-        val = plt.plot(history.epoch, history.history['val_'+key],
-                   '--', label=name.title()+' Validation')
-        plt.plot(history.epoch, history.history[key], color=val[0].get_color(),
-             label=name.title()+' Training')
 
-    plt.xlabel('Epochs')
-    plt.ylabel(key.replace('_', ' ').title())
-    plt.legend()
+def display_data(df: pd.DataFrame):
+    """Function displays a chart with historical prices and trade volumes.
+    :param df: DataFrame with prices, volumes and datetime index
+    """
+    fig, ax = plt.subplots()
+    ax_double_x = ax.twinx()
 
-    plt.xlim([0, max(history.epoch)])
+    ax.plot(df['<CLOSE>'], linestyle='solid',
+                 marker=None, color='red', label='Price')
+    ax.set_ylabel('Stock price, Rubles')
+
+    ax_double_x.plot(df['<VOL>'], linestyle='solid',
+                          color='blue', marker=None, label='Volume')
+    ax_double_x.set_ylabel('Volume')
+
+    plt.gcf().autofmt_xdate()
+    ax.legend(loc='upper left')
+    ax_double_x.legend(loc='upper right')
+    ax.set_title('Prices and trade volume')
+    fig.tight_layout()
+    plt.savefig('prices_volume.png')
     plt.show()
 
 
-# Выводим график точности в процессе обучения модели:
-plot_history([('Model', history)])
+def plot_history(hist):
+    """Function plots a chart with training and validation metrics.
+    :param hist: Tensorflow history object from model.fit()
+    """
+    # Losses
+    mae = hist.history['loss']
+    val_mae = hist.history['val_loss']
 
-# Оцениваем точность модели на тестовых данных:
-test_loss = model.evaluate_generator(test_data_gen)
-print(f'\nTest loss (MSE): {test_loss}')
+    # Epochs to plot along x axis
+    x_axis = range(1, len(mae) + 1)
 
-# Делаем прогноз для тестовых данных:
-prediction = model.predict_generator(test_data_gen)
-prediction = scaler_y.inverse_transform(prediction)
+    plt.plot(x_axis, mae, 'bo', label='Training')
+    plt.plot(x_axis, val_mae, 'ro', label='Validation')
+    plt.title('Mean Squared Error')
+    plt.ylabel('Loss (MSE)')
+    plt.xlabel('Epochs')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('bi_training.png')
+    plt.show()
 
-# График с фактическими и прогнозными котировками для тестовых данных:
-plt.plot_date(data_y[-87:].index, data_y[-87:].values,
-              linestyle='solid', marker=None, label='Фактические котировки')
-plt.plot_date(data_y[-87:].index, prediction.ravel(),
-              linestyle='solid', marker=None, label='Прогноз')
-plt.gcf().autofmt_xdate()
-plt.title('Котировки акций Полиметалла')
-plt.ylabel('Цена акции, МосБиржа, руб.')
+
+# ------------------------ Data processing --------------------------
+
+# Historical data
+data = get_data(FILE_PATH)
+
+# Create iterables containing input features (stock prices and volume)
+# and corresponding next day's prices
+input_features = data.iloc[:-1, :].values
+targets = data.iloc[1:, 0].values.reshape(-1, 1)
+
+# Scale down predicted values for better model convergence
+scaler = MinMaxScaler()
+targets = scaler.fit_transform(targets)
+
+# Leave latest periods for test and validation purposes
+train_data = input_features[:-120]
+val_data = input_features[-120:-50]
+test_data = input_features[-50:]
+
+train_targets = targets[:-120]
+val_targets = targets[-120:-50]
+test_targets = targets[-50:]
+
+print(f'Dataset shape: {data.shape}')
+print(f'Train data: {train_data.shape}')
+print(f'Validation data: {val_data.shape}')
+print(f'Test data: {test_data.shape}')
+
+# Create tensorflow dataset objects
+train_ds = tf.keras.preprocessing.sequence.TimeseriesGenerator(
+    train_data, train_targets,
+    length=LOOKBACK, sampling_rate=SAMPLING_RATE,
+    stride=STRIDE, shuffle=True,
+    batch_size=BATCH_SIZE
+)
+
+val_ds = tf.keras.preprocessing.sequence.TimeseriesGenerator(
+    val_data, val_targets,
+    length=LOOKBACK, sampling_rate=SAMPLING_RATE,
+    stride=STRIDE, shuffle=False,
+    batch_size=BATCH_SIZE
+)
+
+test_ds = tf.keras.preprocessing.sequence.TimeseriesGenerator(
+    test_data, test_targets,
+    length=LOOKBACK, sampling_rate=SAMPLING_RATE,
+    stride=STRIDE, shuffle=False,
+    batch_size=BATCH_SIZE
+)
+
+# -------------------------------- Model -----------------------------------
+
+# Normalization layer to scale numeric input data
+normalizer = tf.keras.layers.experimental.preprocessing.Normalization(
+    input_shape=[LOOKBACK, 2]
+)
+normalizer.adapt(train_data)
+
+# Neural network with Long Short-Term Memory layers
+model = tf.keras.models.Sequential(
+    [
+        normalizer,
+        tf.keras.layers.LSTM(4, recurrent_dropout=0.15, return_sequences=True),
+        tf.keras.layers.LSTM(4, recurrent_dropout=0.15, return_sequences=False),
+        tf.keras.layers.Dense(1)
+    ]
+)
+
+model.compile(optimizer='adam', loss='mse',
+              metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
+model.summary()
+
+# Train the model until validation accuracy stops improving
+early_stop = tf.keras.callbacks.EarlyStopping(
+    monitor='val_loss', patience=PATIENCE, restore_best_weights=True
+)
+
+history = model.fit(train_ds,
+                    epochs=EPOCHS,
+                    verbose=2,
+                    validation_data=val_ds,
+                    callbacks=[early_stop])
+
+plot_history(history)
+
+# Evaluate the model on the test set
+test_loss, test_mape = model.evaluate(test_ds)
+print(f'MSE loss on test data: {test_loss}\nMAPE: {test_mape}')
+
+# Forecasts for validation and test periods
+pred_val = model.predict(val_ds)
+pred_val = scaler.inverse_transform(pred_val)
+pred_test = model.predict(test_ds)
+pred_test = scaler.inverse_transform(pred_test)
+
+# Visualize forecast vs. actual prices
+plt.plot(data[-150:]['<CLOSE>'], label='Actual data')
+plt.plot(data[-120+LOOKBACK-1:-50-1].index, pred_val.ravel(), label='Validation forecast')
+plt.plot(data[-50+LOOKBACK-1:-1].index, pred_test.ravel(), label='Test forecast')
+plt.ylabel('Rubles')
+plt.title('Stock Price')
 plt.legend()
+plt.savefig('bi_forecast.png')
 plt.show()
