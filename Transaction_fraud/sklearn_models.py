@@ -37,7 +37,7 @@ PATH = '../input/creditcardfraud/creditcard.csv'
 SEED = 0
 N_FOLDS = 3
 
-# ------------------------------- Functions -----------------------------------
+# ----------------------- Functions ------------------------------
 
 
 def set_seed(seed=42):
@@ -66,7 +66,7 @@ def cv_score(model, x: pd.DataFrame, y: pd.Series, metric: str) -> float:
     return score.mean()
 
 
-# ------------------------------- EDA -----------------------------------
+# --------------------- Feature engineering ----------------------------
 
 set_seed(SEED)
 
@@ -81,7 +81,7 @@ print(data.head())
 data['hour'] = data['Time'] // 3600
 data['hour'] = data['hour'].apply(lambda x: x if x < 24 else x - 24)
 
-# -------------- Cross-Validating sklearn models with default parameters ------------------
+# -------------- Cross-Validation with default parameters ------------------
 
 # Tree-based models do not require scaling of input features.
 # Other classification models benefit from data preprocessing:
